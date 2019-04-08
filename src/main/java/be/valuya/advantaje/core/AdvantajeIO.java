@@ -3,10 +3,13 @@ package be.valuya.advantaje.core;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.text.MessageFormat;
+import java.util.ArrayList;
+import java.util.List;
 
 public class AdvantajeIO {
 
@@ -16,26 +19,42 @@ public class AdvantajeIO {
     public void read(Path path) throws IOException {
         try (InputStream inputStream = Files.newInputStream(path)) {
             readBuffer(inputStream, 0x165);
-            int fieldCount = readWord(inputStream);
+            short fieldCount = readShort(inputStream);
             readBuffer(inputStream, 0x29);
 
             System.out.println("Field count: " + fieldCount);
 
+            List<AdvantajeField> fields = new ArrayList<>();
             int lastFieldStartOffset = 5;
-            for (int i = 0; i < fieldCount ; i++) {
+            for (int i = 0; i < fieldCount; i++) {
                 String fieldName = readString(inputStream, 0x80);
 
-                int fieldTypeInt = readWord(inputStream);
-                int fieldStartOffset = readWord(inputStream);
-                int fieldSize = fieldStartOffset - lastFieldStartOffset;
+                int fieldTypeCode = readShort(inputStream);
+                AdvantajeFieldType fieldType = AdvantajeFieldType.fromCode(fieldTypeCode);
+                int fieldStartOffset = readShort(inputStream);
+                int previousFieldSize = (fieldStartOffset - lastFieldStartOffset);
                 int unknown = readInt(inputStream);
-            readBuffer(inputStream, 0x40);
+                readBuffer(inputStream, 0x40);
 
-                String message = MessageFormat.format("{0}: {1} - {2}", fieldName, fieldTypeInt, fieldSize);
-                System.out.println(message);
+                if (i > 0) {
+                    AdvantajeField previousField = fields.get(i - 1);
+                    previousField.setLength(previousFieldSize);
+                }
 
                 lastFieldStartOffset = fieldStartOffset;
+
+                AdvantajeField field = new AdvantajeField(fieldName, fieldType);
+                fields.add(field);
             }
+
+            for (AdvantajeField field : fields) {
+                String fieldName = field.getName();
+                AdvantajeFieldType fieldType = field.getFieldType();
+                int fieldLength = field.getLength();
+                String message = MessageFormat.format("{0}: {1} - {2}", fieldName, fieldType, fieldLength);
+                System.out.println(message);
+            }
+
 
         }
     }
@@ -50,10 +69,12 @@ public class AdvantajeIO {
         return buffer[0];
     }
 
-    private int readWord(InputStream inputStream) throws IOException {
-        byte[] buffer = readBuffer(inputStream, 2);
-        return buffer[0] << 8 | buffer[1];
+    private short readShort(InputStream inputStream) throws IOException {
+        byte[] bytes = readBuffer(inputStream, 2);
+        ByteBuffer byteBuffer = ByteBuffer.wrap(bytes);
+        return byteBuffer.order(ByteOrder.BIG_ENDIAN).getShort();
     }
+
     private int readInt(InputStream inputStream) throws IOException {
         byte[] buffer = readBuffer(inputStream, 4);
         ByteBuffer byteBuffer = ByteBuffer.wrap(buffer, 0, 4);
