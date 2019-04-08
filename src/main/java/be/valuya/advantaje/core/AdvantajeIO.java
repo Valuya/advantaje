@@ -8,7 +8,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.text.MessageFormat;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 
 public class AdvantajeIO {
@@ -18,32 +24,26 @@ public class AdvantajeIO {
 
     public void read(Path path) throws IOException {
         try (InputStream inputStream = Files.newInputStream(path)) {
-            readBuffer(inputStream, 0x165);
+            readBuffer(inputStream, 0x166);
             short fieldCount = readShort(inputStream);
-            readBuffer(inputStream, 0x29);
+            readBuffer(inputStream, 0x28);
 
             System.out.println("Field count: " + fieldCount);
 
             List<AdvantajeField> fields = new ArrayList<>();
-            int lastFieldStartOffset = 5;
             for (int i = 0; i < fieldCount; i++) {
                 String fieldName = readString(inputStream, 0x80);
 
+                byte unknown1 = readByte(inputStream);
                 int fieldTypeCode = readShort(inputStream);
                 AdvantajeFieldType fieldType = AdvantajeFieldType.fromCode(fieldTypeCode);
                 int fieldStartOffset = readShort(inputStream);
-                int previousFieldSize = (fieldStartOffset - lastFieldStartOffset);
-                int unknown = readInt(inputStream);
-                readBuffer(inputStream, 0x40);
-
-                if (i > 0) {
-                    AdvantajeField previousField = fields.get(i - 1);
-                    previousField.setLength(previousFieldSize);
-                }
-
-                lastFieldStartOffset = fieldStartOffset;
+                int unknown2 = readShort(inputStream);
+                int fieldLength = readShort(inputStream);
+                readBuffer(inputStream, 0x3f);
 
                 AdvantajeField field = new AdvantajeField(fieldName, fieldType);
+                field.setLength(fieldLength);
                 fields.add(field);
             }
 
@@ -55,8 +55,110 @@ public class AdvantajeIO {
                 System.out.println(message);
             }
 
+            // after last field
+            readBuffer(inputStream, 0x5);
 
+            // data starts here
+            for (AdvantajeField field : fields) {
+                String fieldName = field.getName();
+                System.out.print(fieldName + "|");
+            }
+            System.out.println();
+            for (AdvantajeField field : fields) {
+                String fieldName = field.getName();
+                AdvantajeFieldType fieldType = field.getFieldType();
+                int fieldLength = field.getLength();
+                Object value = readValue(inputStream, field);
+                System.out.print(fieldName + ": ");
+                System.out.print("(" + fieldType + ", " + fieldLength + "): ");
+                System.out.print(value + "|");
+                System.out.println();
+            }
+            System.out.println();
         }
+    }
+
+    private Object readValue(InputStream inputStream, AdvantajeField field) throws IOException {
+        AdvantajeFieldType fieldType = field.getFieldType();
+        int length = field.getLength();
+        switch (fieldType) {
+            case LOGICAL: {
+                checkLength(length, 1);
+                return readBoolean(inputStream);
+            }
+            case NUMERIC: {
+                checkLength(length, 2);
+                return readShort(inputStream);
+            }
+            case DATE: {
+                checkLength(length, 4);
+                int dateInt = readInt(inputStream);
+                return getDateFromInt(dateInt);
+            }
+            case STRING: {
+                return readString(inputStream, length);
+            }
+            case MEMO:
+                break;
+            case BINARY:
+                break;
+            case IMAGE:
+                break;
+            case DOUBLE:
+                break;
+            case INTEGER: {
+                checkLength(length, 4);
+                return readInt(inputStream);
+            }
+            case SHORTINT:
+                break;
+            case TIME:
+                break;
+            case TIMESTAMP: {
+                checkLength(length, 8);
+                int dateInt = readInt(inputStream);
+                long millisInt = readInt(inputStream);
+                LocalDate localDate = getDateFromInt(dateInt);
+                LocalTime localTime = LocalTime.ofNanoOfDay(millisInt * 1000L * 1000L);
+                return localDate.atTime(localTime);
+            }
+            case AUTOINC:
+                break;
+            case RAW:
+                break;
+            case CURRENCY: {
+                checkLength(length, 8);
+                return readDouble(inputStream);
+            }
+            case MONEY:
+                break;
+        }
+        throw new IllegalArgumentException("Unhandled field type: " + fieldType);
+    }
+
+    private void checkLength(int length, int i) {
+        if (length != i) {
+            throw new IllegalArgumentException();
+        }
+    }
+
+    private LocalDate getDateFromInt(int dateInt) {
+        if (dateInt == 0) {
+            return null;
+        }
+        try {
+            SimpleDateFormat originalFormat = new SimpleDateFormat("yyyyMMdd");
+            Date date = originalFormat.parse(Integer.toString(dateInt));
+            return date.toInstant()
+                    .atZone(ZoneId.systemDefault())
+                    .toLocalDate();
+        } catch (ParseException parseException) {
+            throw new IllegalArgumentException(parseException);
+        }
+    }
+
+    private boolean readBoolean(InputStream inputStream) throws IOException {
+        return readByte(inputStream) == 1;
     }
 
     private String readString(InputStream inputStream, int size) throws IOException {
@@ -72,13 +174,19 @@ public class AdvantajeIO {
     private short readShort(InputStream inputStream) throws IOException {
         byte[] bytes = readBuffer(inputStream, 2);
         ByteBuffer byteBuffer = ByteBuffer.wrap(bytes);
-        return byteBuffer.order(ByteOrder.BIG_ENDIAN).getShort();
+        return byteBuffer.order(ByteOrder.LITTLE_ENDIAN).getShort();
     }
 
     private int readInt(InputStream inputStream) throws IOException {
-        byte[] buffer = readBuffer(inputStream, 4);
-        ByteBuffer byteBuffer = ByteBuffer.wrap(buffer, 0, 4);
-        return byteBuffer.getInt();
+        byte[] bytes = readBuffer(inputStream, 4);
+        ByteBuffer byteBuffer = ByteBuffer.wrap(bytes);
+        return byteBuffer.order(ByteOrder.LITTLE_ENDIAN).getInt();
+    }
+
+    private double readDouble(InputStream inputStream) throws IOException {
+        byte[] bytes = readBuffer(inputStream, 8);
+        ByteBuffer byteBuffer = ByteBuffer.wrap(bytes);
+        return byteBuffer.order(ByteOrder.LITTLE_ENDIAN).getDouble();
     }
 
     private byte[] readBuffer(InputStream inputStream, int size) throws IOException {

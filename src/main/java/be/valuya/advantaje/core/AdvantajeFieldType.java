@@ -2,6 +2,10 @@ package be.valuya.advantaje.core;
 
 import java.util.stream.Stream;
 
+/**
+ * http://devzone.advantagedatabase.com/dz/webhelp/advantage7.1/mergedProjects/ads-dotnet/base_ado_net_doc/advantage_net_data_provider_data_types.htm
+ * http://devzone.advantagedatabase.com/dz/webhelp/advantage7.1/server1/adt_field_types_and_specifications.htm
+ */
 public enum AdvantajeFieldType {
 
     LOGICAL(1),
