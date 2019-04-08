@@ -4,12 +4,22 @@ import java.util.stream.Stream;
 
 public enum AdvantajeFieldType {
 
-    STRING(4),
-    INTEGER(11),
-    DATE(3),
-    TIMESTAMP(14),
     LOGICAL(1),
-    CURRENCY(17)
+    NUMERIC(2),
+    DATE(3),
+    STRING(4),
+    MEMO(5),
+    BINARY(6),
+    IMAGE(7),
+    DOUBLE(10),
+    INTEGER(11),
+    SHORTINT(12),
+    TIME(13),
+    TIMESTAMP(14),
+    AUTOINC(15),
+    RAW(16),
+    CURRENCY(17), // DOUBLE
+    MONEY(18) // DECIMAL
     ;
 
     private final int code;
