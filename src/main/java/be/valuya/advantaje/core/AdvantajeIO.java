@@ -8,13 +8,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.text.MessageFormat;
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
 import java.time.LocalDate;
 import java.time.LocalTime;
-import java.time.ZoneId;
+import java.time.temporal.JulianFields;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 
 public class AdvantajeIO {
@@ -146,15 +143,7 @@ public class AdvantajeIO {
         if (dateInt == 0) {
             return null;
         }
-        try {
-            SimpleDateFormat originalFormat = new SimpleDateFormat("yyyyMMdd");
-            Date date = originalFormat.parse(Integer.toString(dateInt));
-            return date.toInstant()
-                    .atZone(ZoneId.systemDefault())
-                    .toLocalDate();
-        } catch (ParseException parseException) {
-            throw new IllegalArgumentException(parseException);
-        }
+        return LocalDate.MIN.with(JulianFields.JULIAN_DAY, dateInt);
     }
 
     private boolean readBoolean(InputStream inputStream) throws IOException {
@@ -177,10 +166,14 @@ public class AdvantajeIO {
         return byteBuffer.order(ByteOrder.LITTLE_ENDIAN).getShort();
     }
 
-    private int readInt(InputStream inputStream) throws IOException {
+    private Integer readInt(InputStream inputStream) throws IOException {
         byte[] bytes = readBuffer(inputStream, 4);
         ByteBuffer byteBuffer = ByteBuffer.wrap(bytes);
-        return byteBuffer.order(ByteOrder.LITTLE_ENDIAN).getInt();
+        int intValue = byteBuffer.order(ByteOrder.LITTLE_ENDIAN).getInt();
+        if (intValue == Integer.MIN_VALUE) {
+            return null;
+        }
+        return intValue;
     }
 
     private double readDouble(InputStream inputStream) throws IOException {
