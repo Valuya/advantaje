@@ -21,10 +21,13 @@ import java.util.stream.Collectors;
 
 public class AdvantajeIO {
 
+    private long offset;
+
     public AdvantajeIO() {
     }
 
     public void read(Path path) {
+        offset = 0;
         try (InputStream inputStream = Files.newInputStream(path)) {
             readBuffer(inputStream, 0x18);
             int recordCount = readInt(inputStream);
@@ -96,14 +99,16 @@ public class AdvantajeIO {
 
         System.out.print(fieldName + ": ");
         System.out.print("(" + fieldType + ", " + fieldLength + "): ");
-        String valueStr = valueOptional.map(Object::toString).orElse("-");
-        System.out.print(valueStr + "|");
+        String valueStr = valueOptional.map(Object::toString).orElse("[-]");
+        System.out.print(valueStr);
+//        System.out.print("|");
         System.out.println();
     }
 
     private <T> Optional<T> readValue(InputStream inputStream, AdvantajeField<T> field) {
         AdvantajeFieldType fieldType = field.getFieldType();
         int length = field.getLength();
+//        System.out.println(fieldType + "(" + length + ") " + field.getName() + "@" + offset);
         switch (fieldType) {
             case LOGICAL: {
                 checkLength(length, 1);
@@ -125,28 +130,36 @@ public class AdvantajeIO {
             }
             case MEMO:
                 break;
-            case BINARY:
-                break;
-            case IMAGE:
-                break;
-            case DOUBLE:
-                break;
+            case BINARY: {
+                return (Optional<T>) readBufferOptional(inputStream, length);
+            }
+            case IMAGE: {
+                return (Optional<T>) readBufferOptional(inputStream, length);
+            }
+            case DOUBLE: {
+                checkLength(length, 8);
+                return (Optional<T>) readDoubleOptional(inputStream);
+            }
             case INTEGER: {
                 checkLength(length, 4);
                 return (Optional<T>) readIntegerOptional(inputStream);
             }
-            case SHORTINT:
-                break;
+            case SHORTINT: {
+                checkLength(length, 2);
+                return (Optional<T>) Optional.of(readShort(inputStream));
+            }
             case TIME:
-                break;
+                checkLength(length, 4);
+                return (Optional<T>) readLocalTimeOptional(inputStream);
             case TIMESTAMP: {
                 checkLength(length, 8);
                 return (Optional<T>) readLocalDateTimeOptional(inputStream);
             }
             case AUTOINC:
                 break;
-            case RAW:
-                break;
+            case RAW: {
+                return (Optional<T>) readBufferOptional(inputStream, length);
+            }
             case CURRENCY: {
                 checkLength(length, 8);
                 return (Optional<T>) readDoubleOptional(inputStream);
@@ -158,19 +171,24 @@ public class AdvantajeIO {
     }
 
     private Optional<LocalDateTime> readLocalDateTimeOptional(InputStream inputStream) {
+        Optional<LocalDate> localDateOptional = readIntegerOptional(inputStream)
+                .flatMap(this::getDateFromIntOptional);
+        Optional<LocalTime> localTimeOptional = readLocalTimeOptional(inputStream);
+        return localDateOptional
+                .flatMap(localDate -> localTimeOptional.map(localTime -> addLocalTime(localDate, localTime)));
+    }
+
+    private Optional<LocalTime> readLocalTimeOptional(InputStream inputStream) {
         return readIntegerOptional(inputStream)
-                .flatMap(this::getDateFromIntOptional)
-                .flatMap(localDate -> readTimePartOptional(inputStream, localDate));
+                .map(this::convertMillisToLocalTime);
     }
 
-    private Optional<LocalDateTime> readTimePartOptional(InputStream inputStream, LocalDate localDate) {
-        Optional<Integer> millisOptional = readIntegerOptional(inputStream);
-        return millisOptional.map(millisInt -> addMillis(localDate, millisInt));
-    }
-
-    private LocalDateTime addMillis(LocalDate localDate, Integer millisInt) {
-        LocalTime localTime = LocalTime.ofNanoOfDay(millisInt * 1000L * 1000L);
+    private LocalDateTime addLocalTime(LocalDate localDate, LocalTime localTime) {
         return localDate.atTime(localTime);
+    }
+
+    private LocalTime convertMillisToLocalTime(long millis) {
+        return LocalTime.ofNanoOfDay(millis * 1000L * 1000L);
     }
 
     private void checkLength(int length, int i) {
@@ -193,13 +211,20 @@ public class AdvantajeIO {
     }
 
     private Optional<Boolean> readBooleanOptional(InputStream inputStream) {
-        boolean byteValue = readByte(inputStream) != 'F';
-        return Optional.of(byteValue);
+        byte byteValue = readByte(inputStream);
+        if (byteValue == 'T') {
+            return Optional.of(true);
+        }
+        if (byteValue == 'F') {
+            return Optional.of(false);
+        }
+        return Optional.empty();
     }
 
     private String readString(InputStream inputStream, int size) {
         byte[] buffer = readBuffer(inputStream, size);
-        return new String(buffer);
+        String untrimmedString = new String(buffer);
+        return untrimmedString.replace("\0", "");
     }
 
     public byte readByte(InputStream inputStream) {
@@ -222,7 +247,7 @@ public class AdvantajeIO {
         byte[] bytes = readBuffer(inputStream, 4);
         ByteBuffer byteBuffer = ByteBuffer.wrap(bytes);
         int intValue = byteBuffer.order(ByteOrder.LITTLE_ENDIAN).getInt();
-        if (intValue == Integer.MIN_VALUE) {
+        if (intValue == Integer.MIN_VALUE || intValue == Integer.MAX_VALUE) {
             return Optional.empty();
         }
         return Optional.of(intValue);
@@ -237,7 +262,7 @@ public class AdvantajeIO {
         byte[] bytes = readBuffer(inputStream, 8);
         ByteBuffer byteBuffer = ByteBuffer.wrap(bytes);
         double doubleValue = byteBuffer.order(ByteOrder.LITTLE_ENDIAN).getDouble();
-        if (doubleValue == -1.58E-322 || doubleValue == Double.MIN_VALUE) {
+        if (doubleValue == -1.58E-322 || doubleValue == Double.MIN_VALUE || doubleValue == Double.MAX_VALUE) {
             return Optional.empty();
         }
         return Optional.of(doubleValue);
@@ -252,6 +277,7 @@ public class AdvantajeIO {
         try {
             byte[] buffer = new byte[size];
             int readBytes = inputStream.read(buffer);
+            offset += readBytes;
             if (readBytes != size) {
                 return Optional.empty();
             }
