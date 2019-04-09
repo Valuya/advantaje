@@ -9,10 +9,12 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.text.MessageFormat;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.temporal.JulianFields;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 public class AdvantajeIO {
 
@@ -21,13 +23,15 @@ public class AdvantajeIO {
 
     public void read(Path path) throws IOException {
         try (InputStream inputStream = Files.newInputStream(path)) {
-            readBuffer(inputStream, 0x166);
+            readBuffer(inputStream, 0x18);
+            int recordCount = readInt(inputStream);
+            readBuffer(inputStream, 0x14a);
             short fieldCount = readShort(inputStream);
             readBuffer(inputStream, 0x28);
 
             System.out.println("Field count: " + fieldCount);
 
-            List<AdvantajeField> fields = new ArrayList<>();
+            List<AdvantajeField<?>> fields = new ArrayList<>();
             for (int i = 0; i < fieldCount; i++) {
                 String fieldName = readString(inputStream, 0x80);
 
@@ -52,48 +56,64 @@ public class AdvantajeIO {
                 System.out.println(message);
             }
 
-            // after last field
-            readBuffer(inputStream, 0x5);
-
             // data starts here
             for (AdvantajeField field : fields) {
                 String fieldName = field.getName();
                 System.out.print(fieldName + "|");
             }
             System.out.println();
-            for (AdvantajeField field : fields) {
-                String fieldName = field.getName();
-                AdvantajeFieldType fieldType = field.getFieldType();
-                int fieldLength = field.getLength();
-                Object value = readValue(inputStream, field);
-                System.out.print(fieldName + ": ");
-                System.out.print("(" + fieldType + ", " + fieldLength + "): ");
-                System.out.print(value + "|");
-                System.out.println();
+            System.out.println("---------------------------------------------------------------------------");
+            for (int i = 0; i < recordCount; i++) {
+                System.out.println("-----" + i);
+                readLine(inputStream, fields);
             }
-            System.out.println();
         }
     }
 
-    private Object readValue(InputStream inputStream, AdvantajeField field) throws IOException {
+    private void readLine(InputStream inputStream, List<AdvantajeField<?>> fields) throws IOException {
+        // after last field
+        readByte(inputStream);
+        readInt(inputStream);
+        for (AdvantajeField<?> field : fields) {
+            Optional<?> valueOptional = readValue(inputStream, field);
+            printFieldValue(field, valueOptional);
+        }
+        System.out.println("---------------------------------------------------------------------------");
+    }
+
+    private void printFieldValue(AdvantajeField<?> field, Optional<?> valueOptional) {
+        String fieldName = field.getName();
+        AdvantajeFieldType fieldType = field.getFieldType();
+        int fieldLength = field.getLength();
+
+        System.out.print(fieldName + ": ");
+        System.out.print("(" + fieldType + ", " + fieldLength + "): ");
+        String valueStr = valueOptional.map(Object::toString).orElse("-");
+        System.out.print(valueStr + "|");
+        System.out.println();
+    }
+
+    private <T> Optional<T> readValue(InputStream inputStream, AdvantajeField<T> field) throws IOException {
         AdvantajeFieldType fieldType = field.getFieldType();
         int length = field.getLength();
         switch (fieldType) {
             case LOGICAL: {
                 checkLength(length, 1);
-                return readBoolean(inputStream);
+                return (Optional<T>) readBooleanOptional(inputStream);
             }
             case NUMERIC: {
                 checkLength(length, 2);
-                return readShort(inputStream);
+                short shortValue = readShort(inputStream);
+                return (Optional<T>) Optional.of(shortValue);
             }
             case DATE: {
                 checkLength(length, 4);
-                int dateInt = readInt(inputStream);
-                return getDateFromInt(dateInt);
+                return (Optional<T>) readIntegerOptional(inputStream)
+                        .flatMap(this::getDateFromIntOptional);
             }
             case STRING: {
-                return readString(inputStream, length);
+                String stringValue = readString(inputStream, length);
+                return (Optional<T>) Optional.of(stringValue);
             }
             case MEMO:
                 break;
@@ -105,7 +125,7 @@ public class AdvantajeIO {
                 break;
             case INTEGER: {
                 checkLength(length, 4);
-                return readInt(inputStream);
+                return (Optional<T>) readIntegerOptional(inputStream);
             }
             case SHORTINT:
                 break;
@@ -113,11 +133,7 @@ public class AdvantajeIO {
                 break;
             case TIMESTAMP: {
                 checkLength(length, 8);
-                int dateInt = readInt(inputStream);
-                long millisInt = readInt(inputStream);
-                LocalDate localDate = getDateFromInt(dateInt);
-                LocalTime localTime = LocalTime.ofNanoOfDay(millisInt * 1000L * 1000L);
-                return localDate.atTime(localTime);
+                return (Optional<T>) readLocalDateTimeOptional(inputStream);
             }
             case AUTOINC:
                 break;
@@ -125,12 +141,28 @@ public class AdvantajeIO {
                 break;
             case CURRENCY: {
                 checkLength(length, 8);
-                return readDouble(inputStream);
+                return (Optional<T>) readDoubleOptional(inputStream);
             }
             case MONEY:
                 break;
         }
         throw new IllegalArgumentException("Unhandled field type: " + fieldType);
+    }
+
+    private Optional<LocalDateTime> readLocalDateTimeOptional(InputStream inputStream) {
+        return readIntegerOptional(inputStream)
+                .flatMap(this::getDateFromIntOptional)
+                .flatMap(localDate -> readTimePartOptional(inputStream, localDate));
+    }
+
+    private Optional<LocalDateTime> readTimePartOptional(InputStream inputStream, LocalDate localDate) {
+        Optional<Integer> millisOptional = readIntegerOptional(inputStream);
+        return millisOptional.map(millisInt -> addMillis(localDate, millisInt));
+    }
+
+    private LocalDateTime addMillis(LocalDate localDate, Integer millisInt) {
+        LocalTime localTime = LocalTime.ofNanoOfDay(millisInt * 1000L * 1000L);
+        return localDate.atTime(localTime);
     }
 
     private void checkLength(int length, int i) {
@@ -139,15 +171,22 @@ public class AdvantajeIO {
         }
     }
 
-    private LocalDate getDateFromInt(int dateInt) {
+    private Optional<LocalDate> getDateFromIntOptional(int dateInt) {
         if (dateInt == 0) {
-            return null;
+            return Optional.empty();
         }
-        return LocalDate.MIN.with(JulianFields.JULIAN_DAY, dateInt);
+        LocalDate localDate = LocalDate.MIN.with(JulianFields.JULIAN_DAY, dateInt);
+        return Optional.of(localDate);
     }
 
     private boolean readBoolean(InputStream inputStream) throws IOException {
-        return readByte(inputStream) == 1;
+        return readBooleanOptional(inputStream)
+                .orElseThrow(() -> new IllegalArgumentException("Missing expected boolean value"));
+    }
+
+    private Optional<Boolean> readBooleanOptional(InputStream inputStream) throws IOException {
+        boolean byteValue = readByte(inputStream) != 'F';
+        return Optional.of(byteValue);
     }
 
     private String readString(InputStream inputStream, int size) throws IOException {
@@ -155,9 +194,9 @@ public class AdvantajeIO {
         return new String(buffer);
     }
 
-    private byte readByte(InputStream inputStream) throws IOException {
-        byte[] buffer = readBuffer(inputStream, 1);
-        return buffer[0];
+    public byte readByte(InputStream inputStream) throws IOException {
+        byte[] bytes = readBuffer(inputStream, 1);
+        return bytes[0];
     }
 
     private short readShort(InputStream inputStream) throws IOException {
@@ -166,29 +205,52 @@ public class AdvantajeIO {
         return byteBuffer.order(ByteOrder.LITTLE_ENDIAN).getShort();
     }
 
-    private Integer readInt(InputStream inputStream) throws IOException {
+    private int readInt(InputStream inputStream) throws IOException {
+        return readIntegerOptional(inputStream)
+                .orElseThrow(() -> new IllegalArgumentException("Missing expected int value"));
+    }
+
+    private Optional<Integer> readIntegerOptional(InputStream inputStream) {
         byte[] bytes = readBuffer(inputStream, 4);
         ByteBuffer byteBuffer = ByteBuffer.wrap(bytes);
         int intValue = byteBuffer.order(ByteOrder.LITTLE_ENDIAN).getInt();
         if (intValue == Integer.MIN_VALUE) {
-            return null;
+            return Optional.empty();
         }
-        return intValue;
+        return Optional.of(intValue);
     }
 
     private double readDouble(InputStream inputStream) throws IOException {
-        byte[] bytes = readBuffer(inputStream, 8);
-        ByteBuffer byteBuffer = ByteBuffer.wrap(bytes);
-        return byteBuffer.order(ByteOrder.LITTLE_ENDIAN).getDouble();
+        return readDoubleOptional(inputStream)
+                .orElseThrow(() -> new IllegalArgumentException("Missing expected double value"));
     }
 
-    private byte[] readBuffer(InputStream inputStream, int size) throws IOException {
-        byte[] buffer = new byte[size];
-        int readBytes = inputStream.read(buffer);
-        if (readBytes != size) {
-            throw new RuntimeException("buffer underrun");
+    private Optional<Double> readDoubleOptional(InputStream inputStream) throws IOException {
+        byte[] bytes = readBuffer(inputStream, 8);
+        ByteBuffer byteBuffer = ByteBuffer.wrap(bytes);
+        double doubleValue = byteBuffer.order(ByteOrder.LITTLE_ENDIAN).getDouble();
+        if (doubleValue == -1.58E-322 || doubleValue == Double.MIN_VALUE) {
+            return Optional.empty();
         }
-        return buffer;
+        return Optional.of(doubleValue);
+    }
+
+    private byte[] readBuffer(InputStream inputStream, int size) {
+        return readBufferOptional(inputStream, size)
+                .orElseThrow(() -> new RuntimeException("buffer underrun"));
+    }
+
+    private Optional<byte[]> readBufferOptional(InputStream inputStream, int size) {
+        try {
+            byte[] buffer = new byte[size];
+            int readBytes = inputStream.read(buffer);
+            if (readBytes != size) {
+                return Optional.empty();
+            }
+            return Optional.of(buffer);
+        } catch (IOException exception) {
+            throw new AdvantageException("Error reading buffer", exception);
+        }
     }
 
     public static void main(String... args) throws IOException {

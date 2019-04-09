@@ -1,6 +1,6 @@
 package be.valuya.advantaje.core;
 
-public class AdvantajeField {
+public class AdvantajeField<T> {
 
     private String name;
     private AdvantajeFieldType fieldType;
