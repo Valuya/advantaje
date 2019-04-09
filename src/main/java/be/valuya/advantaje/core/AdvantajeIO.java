@@ -14,14 +14,17 @@ import java.time.LocalTime;
 import java.time.temporal.JulianFields;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 public class AdvantajeIO {
 
     public AdvantajeIO() {
     }
 
-    public void read(Path path) throws IOException {
+    public void read(Path path) {
         try (InputStream inputStream = Files.newInputStream(path)) {
             readBuffer(inputStream, 0x18);
             int recordCount = readInt(inputStream);
@@ -65,20 +68,25 @@ public class AdvantajeIO {
             System.out.println("---------------------------------------------------------------------------");
             for (int i = 0; i < recordCount; i++) {
                 System.out.println("-----" + i);
-                readLine(inputStream, fields);
+                Map<AdvantajeField<?>, ? extends Optional<?>> lineMap = readLineMap(inputStream, fields);
+                for (AdvantajeField<?> field : fields) {
+                    Optional<?> valueOptional = lineMap.get(field);
+                    printFieldValue(field, valueOptional);
+                }
+                System.out.println("---------------------------------------------------------------------------");
+
             }
+        } catch (IOException ioException) {
+            throw new AdvantageException("Cannot read file.", ioException);
         }
     }
 
-    private void readLine(InputStream inputStream, List<AdvantajeField<?>> fields) throws IOException {
+    private Map<AdvantajeField<?>, ? extends Optional<?>> readLineMap(InputStream inputStream, List<AdvantajeField<?>> fields) {
         // after last field
         readByte(inputStream);
         readInt(inputStream);
-        for (AdvantajeField<?> field : fields) {
-            Optional<?> valueOptional = readValue(inputStream, field);
-            printFieldValue(field, valueOptional);
-        }
-        System.out.println("---------------------------------------------------------------------------");
+        return fields.stream()
+                .collect(Collectors.toMap(Function.identity(), field -> readValue(inputStream, field)));
     }
 
     private void printFieldValue(AdvantajeField<?> field, Optional<?> valueOptional) {
@@ -93,7 +101,7 @@ public class AdvantajeIO {
         System.out.println();
     }
 
-    private <T> Optional<T> readValue(InputStream inputStream, AdvantajeField<T> field) throws IOException {
+    private <T> Optional<T> readValue(InputStream inputStream, AdvantajeField<T> field) {
         AdvantajeFieldType fieldType = field.getFieldType();
         int length = field.getLength();
         switch (fieldType) {
@@ -179,33 +187,33 @@ public class AdvantajeIO {
         return Optional.of(localDate);
     }
 
-    private boolean readBoolean(InputStream inputStream) throws IOException {
+    private boolean readBoolean(InputStream inputStream) {
         return readBooleanOptional(inputStream)
                 .orElseThrow(() -> new IllegalArgumentException("Missing expected boolean value"));
     }
 
-    private Optional<Boolean> readBooleanOptional(InputStream inputStream) throws IOException {
+    private Optional<Boolean> readBooleanOptional(InputStream inputStream) {
         boolean byteValue = readByte(inputStream) != 'F';
         return Optional.of(byteValue);
     }
 
-    private String readString(InputStream inputStream, int size) throws IOException {
+    private String readString(InputStream inputStream, int size) {
         byte[] buffer = readBuffer(inputStream, size);
         return new String(buffer);
     }
 
-    public byte readByte(InputStream inputStream) throws IOException {
+    public byte readByte(InputStream inputStream) {
         byte[] bytes = readBuffer(inputStream, 1);
         return bytes[0];
     }
 
-    private short readShort(InputStream inputStream) throws IOException {
+    private short readShort(InputStream inputStream) {
         byte[] bytes = readBuffer(inputStream, 2);
         ByteBuffer byteBuffer = ByteBuffer.wrap(bytes);
         return byteBuffer.order(ByteOrder.LITTLE_ENDIAN).getShort();
     }
 
-    private int readInt(InputStream inputStream) throws IOException {
+    private int readInt(InputStream inputStream) {
         return readIntegerOptional(inputStream)
                 .orElseThrow(() -> new IllegalArgumentException("Missing expected int value"));
     }
@@ -220,12 +228,12 @@ public class AdvantajeIO {
         return Optional.of(intValue);
     }
 
-    private double readDouble(InputStream inputStream) throws IOException {
+    private double readDouble(InputStream inputStream) {
         return readDoubleOptional(inputStream)
                 .orElseThrow(() -> new IllegalArgumentException("Missing expected double value"));
     }
 
-    private Optional<Double> readDoubleOptional(InputStream inputStream) throws IOException {
+    private Optional<Double> readDoubleOptional(InputStream inputStream) {
         byte[] bytes = readBuffer(inputStream, 8);
         ByteBuffer byteBuffer = ByteBuffer.wrap(bytes);
         double doubleValue = byteBuffer.order(ByteOrder.LITTLE_ENDIAN).getDouble();
@@ -253,7 +261,7 @@ public class AdvantajeIO {
         }
     }
 
-    public static void main(String... args) throws IOException {
+    public static void main(String... args) {
         AdvantajeIO advantajeIO = new AdvantajeIO();
         Path path = Paths.get("c:\\dev\\wbdata\\apizmeo-bob\\ac_ahisto.adt");
 //        Path path = Paths.get("c:\\dev\\wbdata\\apizmeo-bob\\ac_chisto.adt");
