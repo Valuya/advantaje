@@ -7,102 +7,69 @@ import java.nio.ByteOrder;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.text.MessageFormat;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.temporal.JulianFields;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 public class AdvantajeIO {
 
     private long offset;
 
-    public AdvantajeIO() {
+    public Stream<AdvantajeRecord> streamTable(AdvantajeTableMetaData tableMetaData, InputStream inputStream) {
+        List<AdvantajeField<?>> fields = tableMetaData.getFields();
+        int recordCount = tableMetaData.getRecordCount();
+        return IntStream.range(1, recordCount)
+                .mapToObj(index -> streamLineValues(inputStream, fields));
     }
 
-    public void read(Path path) {
+    private AdvantajeTableMetaData openTable(InputStream inputStream) {
         offset = 0;
-        try (InputStream inputStream = Files.newInputStream(path)) {
-            readBuffer(inputStream, 0x18);
-            int recordCount = readInt(inputStream);
-            readBuffer(inputStream, 0x14a);
-            short fieldCount = readShort(inputStream);
-            readBuffer(inputStream, 0x28);
+        List<AdvantajeField<?>> fields = new ArrayList<>();
+        readBuffer(inputStream, 0x18);
+        int recordCount = readInt(inputStream);
+        readBuffer(inputStream, 0x14a);
+        short fieldCount = readShort(inputStream);
+        readBuffer(inputStream, 0x28);
 
-            System.out.println("Field count: " + fieldCount);
+        for (int i = 0; i < fieldCount; i++) {
+            String fieldName = readString(inputStream, 0x80);
 
-            List<AdvantajeField<?>> fields = new ArrayList<>();
-            for (int i = 0; i < fieldCount; i++) {
-                String fieldName = readString(inputStream, 0x80);
+            byte unknown1 = readByte(inputStream);
+            int fieldTypeCode = readShort(inputStream);
+            AdvantajeFieldType fieldType = AdvantajeFieldType.fromCode(fieldTypeCode);
+            int fieldStartOffset = readShort(inputStream);
+            int unknown2 = readShort(inputStream);
+            int fieldLength = readShort(inputStream);
+            readBuffer(inputStream, 0x3f);
 
-                byte unknown1 = readByte(inputStream);
-                int fieldTypeCode = readShort(inputStream);
-                AdvantajeFieldType fieldType = AdvantajeFieldType.fromCode(fieldTypeCode);
-                int fieldStartOffset = readShort(inputStream);
-                int unknown2 = readShort(inputStream);
-                int fieldLength = readShort(inputStream);
-                readBuffer(inputStream, 0x3f);
-
-                AdvantajeField field = new AdvantajeField(fieldName, fieldType);
-                field.setLength(fieldLength);
-                fields.add(field);
-            }
-
-            for (AdvantajeField field : fields) {
-                String fieldName = field.getName();
-                AdvantajeFieldType fieldType = field.getFieldType();
-                int fieldLength = field.getLength();
-                String message = MessageFormat.format("{0}: {1} - {2}", fieldName, fieldType, fieldLength);
-                System.out.println(message);
-            }
-
-            // data starts here
-            for (AdvantajeField field : fields) {
-                String fieldName = field.getName();
-                System.out.print(fieldName + "|");
-            }
-            System.out.println();
-            System.out.println("---------------------------------------------------------------------------");
-            for (int i = 0; i < recordCount; i++) {
-                System.out.println("-----" + i);
-                Map<AdvantajeField<?>, ? extends Optional<?>> lineMap = readLineMap(inputStream, fields);
-                for (AdvantajeField<?> field : fields) {
-                    Optional<?> valueOptional = lineMap.get(field);
-                    printFieldValue(field, valueOptional);
-                }
-                System.out.println("---------------------------------------------------------------------------");
-
-            }
-        } catch (IOException ioException) {
-            throw new AdvantageException("Cannot read file.", ioException);
+            AdvantajeField field = new AdvantajeField(fieldName, fieldType);
+            field.setLength(fieldLength);
+            fields.add(field);
         }
+
+        return new AdvantajeTableMetaData(recordCount, fields);
     }
 
-    private Map<AdvantajeField<?>, ? extends Optional<?>> readLineMap(InputStream inputStream, List<AdvantajeField<?>> fields) {
+    public AdvantajeRecord streamLineValues(InputStream inputStream, List<AdvantajeField<?>> fields) {
         // after last field
-        readByte(inputStream);
-        readInt(inputStream);
-        return fields.stream()
-                .collect(Collectors.toMap(Function.identity(), field -> readValue(inputStream, field)));
+        readByte(inputStream); // unknown
+        readInt(inputStream); // unknown
+        List<? extends AdvantajeValue<?>> values = fields.stream()
+                .map(field -> getAdvantajeValue(inputStream, field))
+                .collect(Collectors.toList());
+        return new AdvantajeRecord(values);
     }
 
-    private void printFieldValue(AdvantajeField<?> field, Optional<?> valueOptional) {
-        String fieldName = field.getName();
-        AdvantajeFieldType fieldType = field.getFieldType();
-        int fieldLength = field.getLength();
-
-        System.out.print(fieldName + ": ");
-        System.out.print("(" + fieldType + ", " + fieldLength + "): ");
-        String valueStr = valueOptional.map(Object::toString).orElse("[-]");
-        System.out.print(valueStr);
-//        System.out.print("|");
-        System.out.println();
+    private <T> AdvantajeValue<T> getAdvantajeValue(InputStream inputStream, AdvantajeField<T> field) {
+        Optional<T> valueOptional = readValue(inputStream, field);
+        return new AdvantajeValue<>(field, valueOptional);
     }
 
     private <T> Optional<T> readValue(InputStream inputStream, AdvantajeField<T> field) {
@@ -148,9 +115,10 @@ public class AdvantajeIO {
                 checkLength(length, 2);
                 return (Optional<T>) Optional.of(readShort(inputStream));
             }
-            case TIME:
+            case TIME: {
                 checkLength(length, 4);
                 return (Optional<T>) readLocalTimeOptional(inputStream);
+            }
             case TIMESTAMP: {
                 checkLength(length, 8);
                 return (Optional<T>) readLocalDateTimeOptional(inputStream);
@@ -287,11 +255,36 @@ public class AdvantajeIO {
         }
     }
 
-    public static void main(String... args) {
+    private static void printRecord(AdvantajeRecord advantajeRecord) {
+        advantajeRecord.getValues()
+                .forEach(AdvantajeIO::printFieldValue);
+        System.out.println("---------------------------------------------------------------------------");
+    }
+
+    private static <T> void printFieldValue(AdvantajeValue<T> advantajeValue) {
+        AdvantajeField<? extends T> field = advantajeValue.getField();
+        Optional<T> valueOptional = advantajeValue.getValueOptional();
+        String fieldName = field.getName();
+        AdvantajeFieldType fieldType = field.getFieldType();
+        int fieldLength = field.getLength();
+
+        System.out.print(fieldName + ": ");
+        System.out.print("(" + fieldType + ", " + fieldLength + "): ");
+        String valueStr = valueOptional.map(Object::toString).orElse("[-]");
+        System.out.print(valueStr);
+//        System.out.print("|");
+        System.out.println();
+    }
+
+    public static void main(String... args) throws IOException {
         AdvantajeIO advantajeIO = new AdvantajeIO();
         Path path = Paths.get("c:\\dev\\wbdata\\apizmeo-bob\\ac_ahisto.adt");
 //        Path path = Paths.get("c:\\dev\\wbdata\\apizmeo-bob\\ac_chisto.adt");
 //        Path path = Paths.get("c:\\dev\\wbdata\\apizmeo-bob\\ac_compan.adt");
-        advantajeIO.read(path);
+        try (InputStream inputStream = Files.newInputStream(path)) {
+            AdvantajeTableMetaData tableMetaData = advantajeIO.openTable(inputStream);
+            advantajeIO.streamTable(tableMetaData, inputStream)
+                    .forEach(AdvantajeIO::printRecord);
+        }
     }
 }
