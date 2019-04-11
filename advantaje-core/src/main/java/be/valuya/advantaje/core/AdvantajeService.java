@@ -22,6 +22,11 @@ public class AdvantajeService {
 
     private long offset;
 
+    public Stream<AdvantajeRecord> streamTable(InputStream inputStream) {
+        AdvantajeTableMetaData tableMetaData = openTable(inputStream);
+        return streamTable(tableMetaData, inputStream);
+    }
+
     public Stream<AdvantajeRecord> streamTable(AdvantajeTableMetaData tableMetaData, InputStream inputStream) {
         List<AdvantajeField<?>> fields = tableMetaData.getFields();
         int recordCount = tableMetaData.getRecordCount();
@@ -29,7 +34,7 @@ public class AdvantajeService {
                 .mapToObj(index -> streamLineValues(inputStream, fields));
     }
 
-    private AdvantajeTableMetaData openTable(InputStream inputStream) {
+    public AdvantajeTableMetaData openTable(InputStream inputStream) {
         offset = 0;
         List<AdvantajeField<?>> fields = new ArrayList<>();
         readBuffer(inputStream, 0x18);
@@ -283,8 +288,7 @@ public class AdvantajeService {
 //        Path path = Paths.get("c:\\dev\\wbdata\\apizmeo-bob\\ac_compan.adt");
         Path path = Paths.get("c:\\dev\\wbdata\\apizmeo-bob\\ac_period.adt");
         try (InputStream inputStream = Files.newInputStream(path)) {
-            AdvantajeTableMetaData tableMetaData = advantajeService.openTable(inputStream);
-            advantajeService.streamTable(tableMetaData, inputStream)
+            advantajeService.streamTable(inputStream)
                     .forEach(AdvantajeService::printRecord);
         }
     }
