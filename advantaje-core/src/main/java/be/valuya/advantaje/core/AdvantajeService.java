@@ -66,10 +66,11 @@ public class AdvantajeService {
         // after last field
         readByte(inputStream); // unknown
         readInt(inputStream); // unknown
-        List<? extends AdvantajeValue<?>> values = fields.stream()
+        AdvantajeRecord advantajeRecord = new AdvantajeRecord();
+        fields.stream()
                 .map(field -> getAdvantajeValue(inputStream, field))
-                .collect(Collectors.toList());
-        return new AdvantajeRecord(values);
+                .forEach(advantajeRecord::put);
+        return advantajeRecord;
     }
 
     private <T> AdvantajeValue<T> getAdvantajeValue(InputStream inputStream, AdvantajeField<T> field) {
@@ -261,7 +262,8 @@ public class AdvantajeService {
     }
 
     private static void printRecord(AdvantajeRecord advantajeRecord) {
-        advantajeRecord.getValues()
+        advantajeRecord.getValueMap()
+                .values()
                 .forEach(AdvantajeService::printFieldValue);
         System.out.println("---------------------------------------------------------------------------");
     }
