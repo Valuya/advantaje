@@ -18,7 +18,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-public class AdvantajeIO {
+public class AdvantajeService {
 
     private long offset;
 
@@ -257,7 +257,7 @@ public class AdvantajeIO {
 
     private static void printRecord(AdvantajeRecord advantajeRecord) {
         advantajeRecord.getValues()
-                .forEach(AdvantajeIO::printFieldValue);
+                .forEach(AdvantajeService::printFieldValue);
         System.out.println("---------------------------------------------------------------------------");
     }
 
@@ -277,14 +277,15 @@ public class AdvantajeIO {
     }
 
     public static void main(String... args) throws IOException {
-        AdvantajeIO advantajeIO = new AdvantajeIO();
-        Path path = Paths.get("c:\\dev\\wbdata\\apizmeo-bob\\ac_ahisto.adt");
+        AdvantajeService advantajeService = new AdvantajeService();
+//        Path path = Paths.get("c:\\dev\\wbdata\\apizmeo-bob\\ac_ahisto.adt");
 //        Path path = Paths.get("c:\\dev\\wbdata\\apizmeo-bob\\ac_chisto.adt");
 //        Path path = Paths.get("c:\\dev\\wbdata\\apizmeo-bob\\ac_compan.adt");
+        Path path = Paths.get("c:\\dev\\wbdata\\apizmeo-bob\\ac_period.adt");
         try (InputStream inputStream = Files.newInputStream(path)) {
-            AdvantajeTableMetaData tableMetaData = advantajeIO.openTable(inputStream);
-            advantajeIO.streamTable(tableMetaData, inputStream)
-                    .forEach(AdvantajeIO::printRecord);
+            AdvantajeTableMetaData tableMetaData = advantajeService.openTable(inputStream);
+            advantajeService.streamTable(tableMetaData, inputStream)
+                    .forEach(AdvantajeService::printRecord);
         }
     }
 }
