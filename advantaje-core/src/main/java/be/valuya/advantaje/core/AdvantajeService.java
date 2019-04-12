@@ -24,6 +24,10 @@ public class AdvantajeService {
 
     private long offset;
 
+    public Stream<AdvantajeRecord> streamTable(InputStream inputStream) {
+        return streamTable(inputStream, DEFAULT_CHARSET);
+    }
+
     public Stream<AdvantajeRecord> streamTable(InputStream inputStream, Charset charset) {
         AdvantajeTableMetaData tableMetaData = openTable(inputStream, charset);
         return streamTable(tableMetaData, inputStream, charset);
