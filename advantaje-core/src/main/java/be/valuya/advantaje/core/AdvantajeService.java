@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -14,27 +15,28 @@ import java.time.temporal.JulianFields;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class AdvantajeService {
 
+    public static final Charset DEFAULT_CHARSET = Charset.forName("iso-8859-1");
+
     private long offset;
 
-    public Stream<AdvantajeRecord> streamTable(InputStream inputStream) {
-        AdvantajeTableMetaData tableMetaData = openTable(inputStream);
-        return streamTable(tableMetaData, inputStream);
+    public Stream<AdvantajeRecord> streamTable(InputStream inputStream, Charset charset) {
+        AdvantajeTableMetaData tableMetaData = openTable(inputStream, charset);
+        return streamTable(tableMetaData, inputStream, charset);
     }
 
-    public Stream<AdvantajeRecord> streamTable(AdvantajeTableMetaData tableMetaData, InputStream inputStream) {
+    public Stream<AdvantajeRecord> streamTable(AdvantajeTableMetaData tableMetaData, InputStream inputStream, Charset charset) {
         List<AdvantajeField<?>> fields = tableMetaData.getFields();
         int recordCount = tableMetaData.getRecordCount();
         return IntStream.range(1, recordCount)
-                .mapToObj(index -> streamLineValues(inputStream, fields));
+                .mapToObj(index -> streamLineValues(inputStream, fields, charset));
     }
 
-    public AdvantajeTableMetaData openTable(InputStream inputStream) {
+    public AdvantajeTableMetaData openTable(InputStream inputStream, Charset charset) {
         offset = 0;
         List<AdvantajeField<?>> fields = new ArrayList<>();
         readBuffer(inputStream, 0x18);
@@ -44,7 +46,7 @@ public class AdvantajeService {
         readBuffer(inputStream, 0x28);
 
         for (int i = 0; i < fieldCount; i++) {
-            String fieldName = readString(inputStream, 0x80);
+            String fieldName = readString(inputStream, 0x80, charset);
 
             byte unknown1 = readByte(inputStream);
             int fieldTypeCode = readShort(inputStream);
@@ -62,23 +64,23 @@ public class AdvantajeService {
         return new AdvantajeTableMetaData(recordCount, fields);
     }
 
-    public AdvantajeRecord streamLineValues(InputStream inputStream, List<AdvantajeField<?>> fields) {
+    public AdvantajeRecord streamLineValues(InputStream inputStream, List<AdvantajeField<?>> fields, Charset charset) {
         // after last field
         readByte(inputStream); // unknown
         readInt(inputStream); // unknown
         AdvantajeRecord advantajeRecord = new AdvantajeRecord();
         fields.stream()
-                .map(field -> getAdvantajeValue(inputStream, field))
+                .map(field -> getAdvantajeValue(inputStream, field, charset))
                 .forEach(advantajeRecord::put);
         return advantajeRecord;
     }
 
-    private <T> AdvantajeValue<T> getAdvantajeValue(InputStream inputStream, AdvantajeField<T> field) {
-        Optional<T> valueOptional = readValue(inputStream, field);
+    private <T> AdvantajeValue<T> getAdvantajeValue(InputStream inputStream, AdvantajeField<T> field, Charset charset) {
+        Optional<T> valueOptional = readValue(inputStream, field, charset);
         return new AdvantajeValue<>(field, valueOptional);
     }
 
-    private <T> Optional<T> readValue(InputStream inputStream, AdvantajeField<T> field) {
+    private <T> Optional<T> readValue(InputStream inputStream, AdvantajeField<T> field, Charset charset) {
         AdvantajeFieldType fieldType = field.getFieldType();
         int length = field.getLength();
 //        System.out.println(fieldType + "(" + length + ") " + field.getName() + "@" + offset);
@@ -98,7 +100,7 @@ public class AdvantajeService {
                         .flatMap(this::getDateFromIntOptional);
             }
             case STRING: {
-                String stringValue = readString(inputStream, length);
+                String stringValue = readString(inputStream, length, charset);
                 return (Optional<T>) Optional.of(stringValue);
             }
             case MEMO:
@@ -195,9 +197,9 @@ public class AdvantajeService {
         return Optional.empty();
     }
 
-    private String readString(InputStream inputStream, int size) {
+    private String readString(InputStream inputStream, int size, Charset charset) {
         byte[] buffer = readBuffer(inputStream, size);
-        String untrimmedString = new String(buffer);
+        String untrimmedString = new String(buffer, charset);
         return untrimmedString.replace("\0", "");
     }
 
@@ -287,10 +289,10 @@ public class AdvantajeService {
         AdvantajeService advantajeService = new AdvantajeService();
 //        Path path = Paths.get("c:\\dev\\wbdata\\apizmeo-bob\\ac_ahisto.adt");
 //        Path path = Paths.get("c:\\dev\\wbdata\\apizmeo-bob\\ac_chisto.adt");
-//        Path path = Paths.get("c:\\dev\\wbdata\\apizmeo-bob\\ac_compan.adt");
-        Path path = Paths.get("c:\\dev\\wbdata\\apizmeo-bob\\ac_period.adt");
+        Path path = Paths.get("c:\\dev\\wbdata\\apizmeo-bob\\ac_compan.adt");
+//        Path path = Paths.get("c:\\dev\\wbdata\\apizmeo-bob\\ac_period.adt");
         try (InputStream inputStream = Files.newInputStream(path)) {
-            advantajeService.streamTable(inputStream)
+            advantajeService.streamTable(inputStream, DEFAULT_CHARSET)
                     .forEach(AdvantajeService::printRecord);
         }
     }
