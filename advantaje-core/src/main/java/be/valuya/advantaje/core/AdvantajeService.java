@@ -201,6 +201,9 @@ public class AdvantajeService {
     }
 
     private LocalTime convertMillisToLocalTime(long millis) {
+        if (millis < 0) {
+            return LocalTime.MIN;
+        }
         return LocalTime.ofNanoOfDay(millis * 1000L * 1000L);
     }
 
@@ -349,13 +352,14 @@ public class AdvantajeService {
 //        Path path = Paths.get("/home/cghislai/dev/valuya/gestemps/res/bob-data/APIZMEOData/ac_linkdoc.adt");
 //        Path path = Paths.get("c:\\dev\\wbdata\\apizmeo-bob\\ac_period.adt");
 
-        Path fodlerPath = Paths.get("/home/cghislai/dev/valuya/gestemps/res/bob-data/APIZMEOData");
+        Path fodlerPath = Paths.get("/home/cghislai/dev/valuya/gestemps/res/bob-data/DL");
         Files.list(fodlerPath)
                 .filter(p->p.getFileName().toString().endsWith(".adt"))
                 .peek(p->System.out.println(" Table "+p.toString()))
                 .forEach(AdvantajeService::debugTable);
 
 //        Path path = Paths.get("/home/cghislai/dev/valuya/gestemps/res/bob-data/APIZMEOData/fi_2017nadt.adt");
+//        Path path = Paths.get("/home/cghislai/dev/valuya/gestemps/res/bob-data/DL/ac_dbkhis.adt");
 //        debugTable(path);
 
     }
