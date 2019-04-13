@@ -5,6 +5,7 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -136,7 +137,8 @@ public class AdvantajeService {
                 return (Optional<T>) readLocalDateTimeOptional(inputStream);
             }
             case AUTOINC:
-                break;
+                checkLength(length, 4);
+                return (Optional<T>) readIntegerOptional(inputStream);
             case RAW: {
                 return (Optional<T>) readBufferOptional(inputStream, length);
             }
@@ -144,7 +146,38 @@ public class AdvantajeService {
                 checkLength(length, 8);
                 return (Optional<T>) readDoubleOptional(inputStream);
             }
-            case MONEY:
+            case MONEY: {
+                checkLength(length, 8);
+                return (Optional<T>) readLongOptional(inputStream);
+            }
+            case CISSTRING: {
+                String stringValue = readString(inputStream, length, charset);
+                return (Optional<T>) Optional.of(stringValue);
+            }
+            case RAWVERSION: {
+                checkLength(length, 4);
+                return (Optional<T>) readIntegerOptional(inputStream);
+            }
+            case MODTIME: {
+                checkLength(length, 8);
+                return (Optional<T>) readLocalTimeOptional(inputStream);
+            }
+            case VARCHAR_FOX: {
+                String stringValue = readVarString(inputStream, length, charset);
+                return (Optional<T>) Optional.of(stringValue);
+            }
+            case VARBINARY_FOX: {
+                return (Optional<T>) readBufferOptional(inputStream, length);
+            }
+            case NCHAR: {
+                String stringValue = readString(inputStream, length * 2, StandardCharsets.UTF_16LE);
+                return (Optional<T>) Optional.of(stringValue);
+            }
+            case NVARCHAR: {
+                String stringValue = readVarString(inputStream, length * 2 + 2, StandardCharsets.UTF_16LE);
+                return (Optional<T>) Optional.of(stringValue);
+            }
+            case NMEMO:
                 break;
         }
         throw new IllegalArgumentException("Unhandled field type: " + fieldType);
@@ -207,6 +240,16 @@ public class AdvantajeService {
         return untrimmedString.replace("\0", "");
     }
 
+    /**
+     * Read a string field which store the string size at the end of the field.
+     */
+    private String readVarString(InputStream inputStream, int fieldSize, Charset charset) {
+        byte[] buffer = readBuffer(inputStream, fieldSize - 2);
+        String untrimmedString = new String(buffer, charset);
+        short size = readShort(inputStream);
+        return untrimmedString.substring(0, size);
+    }
+
     public byte readByte(InputStream inputStream) {
         byte[] bytes = readBuffer(inputStream, 1);
         return bytes[0];
@@ -231,6 +274,16 @@ public class AdvantajeService {
             return Optional.empty();
         }
         return Optional.of(intValue);
+    }
+
+    private Optional<Long> readLongOptional(InputStream inputStream) {
+        byte[] bytes = readBuffer(inputStream, 8);
+        ByteBuffer byteBuffer = ByteBuffer.wrap(bytes);
+        long longValue = byteBuffer.order(ByteOrder.LITTLE_ENDIAN).getLong();
+//        if (intValue == Integer.MIN_VALUE || intValue == Integer.MAX_VALUE) {
+//            return Optional.empty();
+//        }
+        return Optional.of(longValue);
     }
 
     private double readDouble(InputStream inputStream) {
@@ -290,14 +343,30 @@ public class AdvantajeService {
     }
 
     public static void main(String... args) throws IOException {
-        AdvantajeService advantajeService = new AdvantajeService();
 //        Path path = Paths.get("c:\\dev\\wbdata\\apizmeo-bob\\ac_ahisto.adt");
 //        Path path = Paths.get("c:\\dev\\wbdata\\apizmeo-bob\\ac_chisto.adt");
-        Path path = Paths.get("c:\\dev\\wbdata\\apizmeo-bob\\ac_compan.adt");
+//        Path path = Paths.get("/home/cghislai/dev/valuya/gestemps/res/bob-data/APIZMEOData/ac_compan.adt");
+//        Path path = Paths.get("/home/cghislai/dev/valuya/gestemps/res/bob-data/APIZMEOData/ac_linkdoc.adt");
 //        Path path = Paths.get("c:\\dev\\wbdata\\apizmeo-bob\\ac_period.adt");
+
+        Path fodlerPath = Paths.get("/home/cghislai/dev/valuya/gestemps/res/bob-data/APIZMEOData");
+        Files.list(fodlerPath)
+                .filter(p->p.getFileName().toString().endsWith(".adt"))
+                .peek(p->System.out.println(" Table "+p.toString()))
+                .forEach(AdvantajeService::debugTable);
+
+//        Path path = Paths.get("/home/cghislai/dev/valuya/gestemps/res/bob-data/APIZMEOData/fi_2017nadt.adt");
+//        debugTable(path);
+
+    }
+
+    private static void debugTable(Path path) {
+        AdvantajeService advantajeService = new AdvantajeService();
         try (InputStream inputStream = Files.newInputStream(path)) {
             advantajeService.streamTable(inputStream, DEFAULT_CHARSET)
                     .forEach(AdvantajeService::printRecord);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
     }
 }
