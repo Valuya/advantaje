@@ -10,7 +10,7 @@ public class AdvantajeRecord {
 
     public <T> T getValue(String key) {
         return (T) getValueOptional(key)
-                .orElseThrow(() -> new AdvantageException("No value for this field: " + key));
+                .orElseThrow(() -> new AdvantajeException("No value for this field: " + key));
     }
 
     public <T> Optional<T> getValueOptional(String key) {
