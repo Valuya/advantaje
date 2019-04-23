@@ -75,7 +75,7 @@ public class AdvantajeService {
 //        Path path = Paths.get("/home/cghislai/dev/valuya/gestemps/res/bob-data/APIZMEOData/ac_linkdoc.adt");
 //        Path path = Paths.get("c:\\dev\\wbdata\\apizmeo-bob\\ac_period.adt");
 
-        Path fodlerPath = Paths.get("/home/cghislai/dev/valuya/gestemps/res/bob-data/APIZMEOData");
+        Path fodlerPath = Paths.get("/home/cghislai/dev/valuya/gestemps/res/bob-data/DL");
 //        Path fodlerPath = Paths.get("/home/cghislai/dev/valuya/gestemps/res/bob-data/DL");
         Files.list(fodlerPath)
                 .sorted(Comparator.comparing(p -> p.getFileName().toString()))
@@ -87,8 +87,10 @@ public class AdvantajeService {
 //        Path path = Paths.get("/home/cghislai/dev/valuya/gestemps/res/bob-data/APIZMEOData/fi_2017nadt.adt");
 //        Path path = Paths.get("/home/cghislai/dev/valuya/gestemps/res/bob-data/DL/ac_entryl.adt");
 //        Path path = Paths.get("/home/cghislai/dev/valuya/gestemps/res/bob-data/APIZMEOData/ac_ahisto.adt");
+//        Path path = Paths.get("/home/cghislai/dev/valuya/gestemps/res/bob-data/APIZMEOData/ac_accoun.adt");
+//        Path path2 = Paths.get("/home/cghislai/dev/valuya/gestemps/res/bob-data/DL/dm_invdoc.adt");
 //        debugTable(path);
-        Path path2 = Paths.get("/home/cghislai/dev/valuya/gestemps/res/bob-data/DL/ac_ahisto.adt");
+        Path path2 = Paths.get("/home/cghislai/dev/valuya/gestemps/res/bob-data/DL/ac_accoun.adt");
         debugTable(path2);
 
     }
